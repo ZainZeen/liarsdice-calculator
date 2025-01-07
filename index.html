@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大话骰计算器</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .grid-container {
+            display: grid;
+            grid-template-columns: 100px repeat(var(--scene-count, 1), 180px);
+            gap: 20px;
+            align-items: center;
+        }
+        .player-card {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .player-controls {
+            position: relative;
+            width: 180px;
+        }
+        .trust-input {
+            position: absolute;
+            left: 130px;
+            top: 0;
+            width: 60px;
+            display: none;
+        }
+        .trust-input.visible {
+            display: block;
+        }
+        .player-trust {
+            width: 120px !important;
+        }
+        .scene-input {
+            width: 150px;
+        }
+        .scene-input::placeholder {
+            color: #999;
+        }
+        .scene-column {
+            position: relative;
+        }
+        .delete-scene {
+            position: absolute;
+            top: -5px;
+            right: 0;
+            cursor: pointer;
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .result-card {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .header-row {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .header-row > div:not(:first-child) {
+            padding-left: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h2 class="mb-4">大话骰计算器</h2>
+        
+        <!-- 玩家数量输入 -->
+        <div class="mb-4">
+            <label for="playerCount" class="form-label">总玩家数量</label>
+            <input type="number" class="form-control" id="playerCount" min="2" value="4" style="max-width: 200px;">
+        </div>
+
+        <!-- 场景设置 -->
+        <div class="mb-4">
+            <h5>场景设置：</h5>
+            <div id="scenesContainer" class="d-flex gap-4 flex-wrap">
+                <div class="scene-column">
+                    <label>情景一：</label>
+                    <input type="text" class="form-control scene-input" data-scene="1" value="" placeholder="（备注）">
+                    <span class="delete-scene" onclick="deleteScene(1)">×</span>
+                </div>
+            </div>
+            <button class="btn btn-primary mt-3" onclick="addNewScene()">添加情景</button>
+        </div>
+
+        <!-- 玩家列表 -->
+        <div class="mb-4">
+            <div id="playerListHeader" class="grid-container header-row">
+                <div>玩家</div>
+                <div>情景一</div>
+            </div>
+            <div id="playerList">
+                <!-- 玩家卡片将通过JavaScript动态生成 -->
+            </div>
+        </div>
+
+        <!-- 计算结果 -->
+        <div class="result-card">
+            <div id="resultsHeader" class="grid-container header-row">
+                <div>计算结果</div>
+                <div>情景一</div>
+            </div>
+            <div id="results">
+                <div class="grid-container">
+                    <div>常规E(斋)：</div>
+                    <div id="normalStraight1"></div>
+                </div>
+                <div class="grid-container">
+                    <div>常规E(飞)：</div>
+                    <div id="normalFly1"></div>
+                </div>
+                <div class="grid-container">
+                    <div>综合E(斋)：</div>
+                    <div id="combinedStraight1"></div>
+                </div>
+                <div class="grid-container">
+                    <div>综合E(飞)：</div>
+                    <div id="combinedFly1"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sceneCount = 1;
+
+        function addNewScene() {
+            const prevSceneNum = sceneCount;
+            sceneCount++;
+            
+            // 获取上一个场景的描述
+            const prevSceneInput = document.querySelector(`.scene-input[data-scene="${prevSceneNum}"]`);
+            const prevSceneValue = prevSceneInput ? prevSceneInput.value : '';
+            
+            // 添加场景输入
+            const scenesContainer = document.getElementById('scenesContainer');
+            const newSceneDiv = document.createElement('div');
+            newSceneDiv.className = 'scene-column';
+            newSceneDiv.innerHTML = `
+                <label>情景${sceneCount}：</label>
+                <input type="text" class="form-control scene-input" data-scene="${sceneCount}" value="" placeholder="（备注）">
+                <span class="delete-scene" onclick="deleteScene(${sceneCount})">×</span>
+            `;
+            scenesContainer.appendChild(newSceneDiv);
+
+            // 为每个玩家添加新场景的选项，并复制上一个场景的设置
+            const players = document.querySelectorAll('.player-card');
+            players.forEach(player => {
+                const prevSelect = player.querySelector(`.player-trust[data-scene="${prevSceneNum}"]`);
+                const prevTrustInput = prevSelect ? prevSelect.nextElementSibling : null;
+                const prevSelectValue = prevSelect ? prevSelect.value : 'normal';
+                const prevTrustValue = prevTrustInput ? prevTrustInput.value : '1';
+
+                const newColumn = document.createElement('div');
+                newColumn.className = 'player-controls';
+                newColumn.innerHTML = `
+                    <select class="form-select player-trust" data-scene="${sceneCount}">
+                        <option value="normal" ${prevSelectValue === 'normal' ? 'selected' : ''}>普通玩家</option>
+                        <option value="untrust" ${prevSelectValue === 'untrust' ? 'selected' : ''}>不信任玩家</option>
+                        <option value="trust" ${prevSelectValue === 'trust' ? 'selected' : ''}>信任玩家</option>
+                    </select>
+                    <input type="number" class="form-control trust-input ${prevSelectValue === 'trust' ? 'visible' : ''}" 
+                           placeholder="信任数" min="0" value="${prevTrustValue}">
+                `;
+                player.querySelector('.grid-container').appendChild(newColumn);
+
+                // 添加事件监听
+                const select = newColumn.querySelector('.player-trust');
+                const trustInput = newColumn.querySelector('.trust-input');
+                select.addEventListener('input', function() {
+                    trustInput.classList.toggle('visible', this.value === 'trust');
+                    updateCalculations();
+                });
+                trustInput.addEventListener('input', updateCalculations);
+            });
+
+            // 更新CSS变量
+            document.documentElement.style.setProperty('--scene-count', sceneCount);
+            
+            // 更新头部和结果区域
+            updateHeaderRow();
+            updateResultsSection();
+            
+            // 更新计算结果
+            updateCalculations();
+        }
+
+        function deleteScene(sceneNum) {
+            // 如果只剩一个场景，不允许删除
+            if (sceneCount <= 1) {
+                return;
+            }
+
+            // 删除场景输入
+            const sceneInput = document.querySelector(`.scene-input[data-scene="${sceneNum}"]`);
+            sceneInput.parentElement.remove();
+
+            // 删除玩家列表中的对应列
+            const players = document.querySelectorAll('.player-card');
+            players.forEach(player => {
+                const sceneColumn = player.querySelector(`.player-trust[data-scene="${sceneNum}"]`).parentElement;
+                if (sceneColumn) {
+                    sceneColumn.remove();
+                }
+            });
+
+            // 更新场景计数
+            sceneCount--;
+            document.documentElement.style.setProperty('--scene-count', sceneCount);
+
+            // 重新整理所有场景的编号
+            // 1. 更新场景输入框
+            const allSceneInputs = document.querySelectorAll('.scene-input');
+            allSceneInputs.forEach((input, index) => {
+                const newSceneNum = index + 1;
+                input.setAttribute('data-scene', newSceneNum);
+                input.previousElementSibling.textContent = `情景${newSceneNum}：`;
+                const deleteBtn = input.nextElementSibling;
+                if (deleteBtn) {
+                    deleteBtn.setAttribute('onclick', `deleteScene(${newSceneNum})`);
+                }
+            });
+
+            // 2. 更新每个玩家的场景选择框
+            players.forEach(player => {
+                const controls = player.querySelectorAll('.player-controls');
+                controls.forEach((control, index) => {
+                    const newSceneNum = index + 1;
+                    const select = control.querySelector('.player-trust');
+                    if (select) {
+                        select.setAttribute('data-scene', newSceneNum);
+                    }
+                });
+            });
+
+            // 更新头部和结果区域
+            updateHeaderRow();
+            updateResultsSection();
+
+            // 重新计算结果
+            updateCalculations();
+        }
+
+        function updateHeaderRow() {
+            // 更新玩家列表头部
+            const header = document.getElementById('playerListHeader');
+            header.innerHTML = '<div>玩家</div>';
+            for (let i = 1; i <= sceneCount; i++) {
+                header.innerHTML += `<div>情景${i}</div>`;
+            }
+
+            // 更新结果头部
+            const resultsHeader = document.getElementById('resultsHeader');
+            resultsHeader.innerHTML = '<div>计算结果</div>';
+            for (let i = 1; i <= sceneCount; i++) {
+                resultsHeader.innerHTML += `<div>情景${i}</div>`;
+            }
+        }
+
+        function updateResultsSection() {
+            const resultTypes = ['normalStraight', 'normalFly', 'combinedStraight', 'combinedFly'];
+            const resultLabels = ['常规E(斋)：', '常规E(飞)：', '综合E(斋)：', '综合E(飞)：'];
+
+            const results = document.getElementById('results');
+            results.innerHTML = '';
+
+            resultTypes.forEach((type, index) => {
+                const row = document.createElement('div');
+                row.className = 'grid-container';
+                row.innerHTML = `<div>${resultLabels[index]}</div>`;
+                
+                for (let i = 1; i <= sceneCount; i++) {
+                    row.innerHTML += `<div id="${type}${i}"></div>`;
+                }
+                
+                results.appendChild(row);
+            });
+        }
+
+        function updatePlayerList() {
+            const playerCount = parseInt(document.getElementById('playerCount').value);
+            const playerList = document.getElementById('playerList');
+            playerList.innerHTML = '';
+
+            for (let i = 1; i < playerCount; i++) {
+                const playerCard = document.createElement('div');
+                playerCard.className = 'player-card';
+                
+                const playerRow = document.createElement('div');
+                playerRow.className = 'grid-container';
+                
+                // 玩家名称列
+                let html = `<div>玩家 ${i}</div>`;
+                
+                // 为每个场景添加一列
+                for (let j = 1; j <= sceneCount; j++) {
+                    html += `
+                        <div class="player-controls">
+                            <select class="form-select player-trust" data-scene="${j}">
+                                <option value="normal">普通玩家</option>
+                                <option value="untrust">不信任玩家</option>
+                                <option value="trust">信任玩家</option>
+                            </select>
+                            <input type="number" class="form-control trust-input" 
+                                   placeholder="信任数" min="0" value="1">
+                        </div>`;
+                }
+                
+                playerRow.innerHTML = html;
+                playerCard.appendChild(playerRow);
+                playerList.appendChild(playerCard);
+
+                // 添加事件监听
+                playerCard.querySelectorAll('.player-trust').forEach(select => {
+                    const trustInput = select.nextElementSibling;
+                    select.addEventListener('input', function() {
+                        trustInput.classList.toggle('visible', this.value === 'trust');
+                        updateCalculations();
+                    });
+                    trustInput.addEventListener('input', updateCalculations);
+                });
+            }
+            updateCalculations();
+        }
+
+        function calculateSceneResults(scene) {
+            const n = parseInt(document.getElementById('playerCount').value);
+            let b = 0; // 不信任玩家数
+            let c = 0; // 信任玩家数
+            let trustSum = 0; // 信任骰子总数
+
+            // 统计玩家信任状态
+            document.querySelectorAll(`.player-trust[data-scene="${scene}"]`).forEach(select => {
+                const trustInput = select.nextElementSibling;
+                if (select.value === 'untrust') {
+                    b++;
+                } else if (select.value === 'trust') {
+                    c++;
+                    const trustValue = trustInput.value.trim();
+                    if (trustValue !== '') {
+                        trustSum += parseInt(trustValue);
+                    }
+                }
+            });
+
+            const trustDisplay = trustSum > 0 ? trustSum : '信任数';
+            return {
+                normalStraight: `${((n-1)*5/6).toFixed(2)} + a`,
+                normalFly: `${((n-1)*5/3).toFixed(2)} + a`,
+                combinedStraight: `${((n-1-b-c)*5/6).toFixed(2)} + a + ${trustDisplay}`,
+                combinedFly: `${((n-1-b-c)*5/3).toFixed(2)} + a + ${trustDisplay}`
+            };
+        }
+
+        function updateCalculations() {
+            for (let i = 1; i <= sceneCount; i++) {
+                const results = calculateSceneResults(i);
+                document.getElementById(`normalStraight${i}`).textContent = results.normalStraight;
+                document.getElementById(`normalFly${i}`).textContent = results.normalFly;
+                document.getElementById(`combinedStraight${i}`).textContent = results.combinedStraight;
+                document.getElementById(`combinedFly${i}`).textContent = results.combinedFly;
+            }
+        }
+
+        // 初始化
+        document.getElementById('playerCount').addEventListener('input', updatePlayerList);
+        document.querySelectorAll('.scene-input').forEach(input => {
+            input.addEventListener('input', updateCalculations);
+        });
+        updatePlayerList();
+    </script>
+</body>
+</html>
